@@ -1,0 +1,25 @@
+name: fsdl
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - captum=0.5.0=0 
+  - h5py=3.6.0=py38h3de5c98_0 
+  - numpy=1.22.3=py38h7a0a035_0 
+  - numpy-base=1.22.3=py38hca35cd5_0 
+  - pandas=1.4.2=py38hd77b12b_0 
+  - pytorch=1.11.0=py3.8_cuda11.3_cudnn8_0 
+  - pytorch-mutex=1.0=cuda 
+  - scipy=1.7.3=py38h0a974cb_0 
+  - torchaudio=0.11.0=py38_cu113 
+  - torchvision=0.12.0=py38_cu113 
+  - pip=21.2.2=py38haa95532_0
+  - pip:
+    - anndata==0.8.0 
+    - scanpy==1.9.1 
+    - torch-summary==1.4.5 
+    - tqdm==4.64.0 
+    - umap-learn==0.5.3 
+
+
