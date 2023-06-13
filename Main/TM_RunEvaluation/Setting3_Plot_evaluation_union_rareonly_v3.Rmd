@@ -1,0 +1,142 @@
+---
+title: "Plot evaluation"
+author: "Hao Huang"
+date: "07/07/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load 
+```{r}
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(glue)
+  library(reshape2)
+  library(ggpubr)
+})
+```
+
+
+# Setting 1
+## Classification
+```{r}
+classification_method = "KKnn" #KKnn SVM
+```
+
+```{r}
+topN = 10
+```
+
+
+```{r}
+sce = readRDS("../../Data/Processed/Tabula_muris/FS/sce_TM_FAC_processed_HH_no_logcount.rds")
+sce$celltype = sce$cell_ontology_class
+
+nCellsinEachGroup=data.frame(table(sce$celltype))
+groups=nCellsinEachGroup[nCellsinEachGroup$Freq>=300,]
+celltype=sce$celltype # cell type vector
+names(celltype)=colnames(sce) # cell id vector
+```
+
+```{r}
+# traditional methods
+trad_methods = c("runDESeq2", "runLimmavoom", "runScDD")
+df <- data.frame()
+for (method in trad_methods){
+  n=1
+  j=1 # repeat times
+  while(j<=10){
+    selectedGroup_major <- c()
+    selectedGroup_minor <- c()
+    to_select = droplevels(groups$Var1)
+    for(nGroups in c(10,20)){#seq(5,20,5)
+      set.seed(n)
+      selectedGroup_major = c(selectedGroup_major, as.character(sample(to_select, 5)))
+      to_select = to_select[! to_select %in% selectedGroup_major]
+      selectedGroup_minor = c(selectedGroup_minor, as.character(sample(to_select, 5)))
+      to_select = to_select[! to_select %in% selectedGroup_minor]
+      for (imbratio in c(1/2,1/4,1/10)){#1/2, 1/4, 1/10
+        tmp = readRDS(glue("../../Result/Classification/{classification_method}/Setting3/top{topN}/{method}/{classification_method}_top{topN}_result_nGroups_{nGroups}_imb_{imbratio}_iteration{j}.rds"))
+        tmp[[2]][is.na(tmp[[2]])]=0
+        tmp_mean  = rowMeans(tmp[[2]][,colnames(tmp[[2]]) %in%  selectedGroup_minor] )
+        tmp_res <- c(tmp_mean[[7]], nGroups, imbratio, j, method, "traditional")
+        df <- rbind(df, tmp_res)
+      }
+      n=n+1
+    }
+    j=j+1
+  }
+cat(glue("finished {method}  \n"))
+}
+  df <- as.data.frame(df)
+  colnames(df) <- c("Value", "nGroups", "imbratio", "Iteration", "Method", "Category")
+  df$Value <- as.numeric(df$Value)
+  
+  df.trad <- df
+```
+
+```{r}
+# deep learning methods
+nn_methods = c("DeepLift",  "GradientShap","LRP", "FeatureAblation", "Occlusion", "Lime") #, "Lime"
+dl_cat <- c(rep("Deep learning - gradient based", 3), rep("Deep learning - perturbation", 3))
+dl_cat_num = 1
+df <- data.frame()
+for (method in nn_methods){
+n=1
+  j=1 # repeat times
+  while(j<=10){
+    selectedGroup_major <- c()
+    selectedGroup_minor <- c()
+    to_select = droplevels(groups$Var1)
+    for(nGroups in c(10,20)){#seq(5,20,5)
+      set.seed(n)
+      selectedGroup_major = c(selectedGroup_major, as.character(sample(to_select, 5)))
+      to_select = to_select[! to_select %in% selectedGroup_major]
+      selectedGroup_minor = c(selectedGroup_minor, as.character(sample(to_select, 5)))
+      to_select = to_select[! to_select %in% selectedGroup_minor]
+      for (imbratio in c(1/2,1/4,1/10)){#1/2, 1/4, 1/10
+        tmp = readRDS(glue("../../Result/Classification/{classification_method}/Setting3/top{topN}/{method}/{classification_method}_top{topN}_result_nGroups_{nGroups}_imb_{imbratio}_iteration{j}.rds"))
+        tmp[[2]][is.na(tmp[[2]])]=0
+        tmp_mean  = rowMeans(tmp[[2]][,colnames(tmp[[2]]) %in%  selectedGroup_minor] )
+        tmp_res <- c(tmp_mean[[7]], nGroups, imbratio, j, method, dl_cat[dl_cat_num])
+        df <- rbind(df, tmp_res)
+      }
+      
+      
+      n=n+1
+    }
+    j=j+1
+  }
+  dl_cat_num = dl_cat_num+1
+  cat(glue("finished {method}  \n"))
+}
+df <- as.data.frame(df)
+colnames(df) <- c("Value", "nGroups", "imbratio", "Iteration", "Method", "Category")
+df$Value <- as.numeric(df$Value)
+
+df.nn <- df
+```
+
+```{r}
+# combine 
+df.combine = rbind(df.nn, df.trad)
+df.combine$Category = factor(df.combine$Category)
+df.combine$Method = factor(df.combine$Method, levels = c(nn_methods, trad_methods))
+df.combine$nGroups = factor(df.combine$nGroups)
+df.combine$imbratio = factor(df.combine$imbratio, levels = c(1/2, 1/4, 1/10))
+```
+
+## Plot
+boxplot
+```{r, fig.width=6, fig.height=3}
+# plot
+p1 = ggplot(aes(x=imbratio, y = Value, fill = imbratio), data = df.combine) + stat_boxplot(geom = "errorbar",
+             width = 0.3) +geom_boxplot(alpha=1)+ facet_grid(nGroups ~ Method)  + geom_hline(yintercept=.7,color = "red", size=0.5) + theme_light()# +limy(0.75,1)
+p1
+ggsave(p1, width = 10, height = 5, filename = glue("../../Figures/Setting3/Classification/{classification_method}_boxplot_topN_{topN}_minor.pdf"))
+  
+```
+

@@ -1,0 +1,230 @@
+---
+title: "Setting2 balloonplot"
+author: "Hao Huang"
+date: "02/11/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## load packages
+```{r}
+suppressPackageStartupMessages({
+  library(SingleCellExperiment)
+  library(Seurat)
+  library(caret)
+  library(kknn)
+  
+  library(scater)
+  library(tidyverse)
+  library(dplyr)
+  
+  library(glue)
+  library(stringr)
+  library(ggplot2)
+  library(ggpubr)
+  library(ggridges)
+})
+```
+
+useful function
+```{r}
+source("../../Utils/utils.R")
+source("../../Utils/Classification_methods/doEval.R")
+```
+
+```{r}
+topN = 20
+```
+
+# Classification
+```{r}
+classification_method = "SVM" # KKnn"SVM"
+```
+
+# Tabula muris
+```{r}
+trad_methods = c("runDESeq2", "runLimmavoom", "runScDD")
+df <- data.frame()
+for (method in trad_methods){
+  j=1 # repeat times
+  while(j<=10){
+    for(nGroups in c(10,20)){#seq(5,20,5)
+      for (nCells in seq(50,250,50)){
+        tmp = readRDS(glue("../../Result/Classification/{classification_method}/Setting2/top{topN}/{method}/{classification_method}_top{topN}_result_nGroups_{nGroups}_nCells_{nCells}_iteration{j}.rds"))
+        tmp[[2]][is.na(tmp[[2]])]=0
+        tmp_mean  = rowMeans(tmp[[2]])
+        tmp_res <- c(tmp_mean[[7]],tmp_mean[[1]],tmp_mean[[2]], nGroups, nCells, j, method, "traditional")
+        df <- rbind(df, tmp_res)
+      }
+    }
+    j=j+1
+  }
+cat(glue("finished {method}  \n"))
+}
+df <- as.data.frame(df)
+colnames(df) <- c("F1", "Sensitivity", "Specificity", "nGroups", "nCells", "Iteration", "Method", "Category")
+df$Sensitivity <- as.numeric(df$Sensitivity)
+df$Specificity <- as.numeric(df$Specificity)
+df$F1 <- as.numeric(df$F1)
+
+df.trad <- df
+
+```
+
+
+```{r}
+# deep learning
+nn_methods = c("DeepLift",  "GradientShap","LRP", "FeatureAblation", "Occlusion","Lime") #, "Lime"
+dl_cat <- c(rep("Deep learning - gradient based", 3), rep("Deep learning - perturbation", 3))
+dl_cat_num = 1
+df <- data.frame()
+for (method in nn_methods){
+  j=1 # repeat times
+  while(j<=10){
+    for(nGroups in c(10,20)){#seq(5,20,5)
+      for (nCells in seq(50,250,50)){
+        tmp = readRDS(glue("../../Result/Classification/{classification_method}/Setting2/top{topN}/{method}/{classification_method}_top{topN}_result_nGroups_{nGroups}_nCells_{nCells}_iteration{j}.rds"))
+        tmp[[2]][is.na(tmp[[2]])]=0
+        tmp_mean  = rowMeans(tmp[[2]])
+        tmp_res <- c(tmp_mean[[7]],tmp_mean[[1]],tmp_mean[[2]], nGroups, nCells, j, method, dl_cat[dl_cat_num])
+        df <- rbind(df, tmp_res)
+      }
+    }
+    j=j+1
+  }
+  dl_cat_num = dl_cat_num+1
+  cat(glue("finished {method}  \n"))
+}
+df <- as.data.frame(df)
+colnames(df) <- c("F1", "Sensitivity", "Specificity", "nGroups", "nCells", "Iteration", "Method", "Category")
+df$Sensitivity <- as.numeric(df$Sensitivity)
+df$Specificity <- as.numeric(df$Specificity)
+df$F1 <- as.numeric(df$F1)
+df.nn <- df
+```
+
+```{r}
+df.combine = rbind(df.nn, df.trad)
+df.combine$Category = factor(df.combine$Category)
+df.combine$Method = factor(df.combine$Method, levels = c(nn_methods, trad_methods))
+df.combine$nGroups = factor(df.combine$nGroups)
+df.combine$nCells = factor(df.combine$nCells, levels = c(250,200,150,100,50))
+df.combine$data = "TM"
+
+df.combine.20 <- df.combine[df.combine$nGroups == 20,]
+df.combine.10 <- df.combine[df.combine$nGroups == 10,]
+
+df.combine.20.tm <- df.combine.20
+df.combine.10.tm <- df.combine.10
+df.combine.tm <- df.combine
+df.combine.tm$data = "TM"
+```
+
+# Tabula sapiens
+```{r}
+trad_methods = c("runDESeq2", "runLimmavoom", "runScDD")
+df <- data.frame()
+for (method in trad_methods){
+  j=1 # repeat times
+  while(j<=10){
+    for(nGroups in c(10,20)){#seq(5,20,5)
+      for (nCells in seq(50,250,50)){
+        tmp = readRDS(glue("../../Result/TS_Classification/{classification_method}/Setting2/top{topN}/{method}/{classification_method}_top{topN}_result_nGroups_{nGroups}_nCells_{nCells}_iteration{j}.rds"))
+        tmp[[2]][is.na(tmp[[2]])]=0
+        tmp_mean  = rowMeans(tmp[[2]])
+        tmp_res <- c(tmp_mean[[7]],tmp_mean[[1]],tmp_mean[[2]], nGroups, nCells, j, method, "traditional")
+        df <- rbind(df, tmp_res)
+      }
+    }
+    j=j+1
+  }
+cat(glue("finished {method}  \n"))
+}
+df <- as.data.frame(df)
+colnames(df) <- c("F1", "Sensitivity", "Specificity", "nGroups", "nCells", "Iteration", "Method", "Category")
+df$Sensitivity <- as.numeric(df$Sensitivity)
+df$Specificity <- as.numeric(df$Specificity)
+df$F1 <- as.numeric(df$F1)
+
+df.trad <- df
+
+```
+
+
+```{r}
+# deep learning
+nn_methods = c("DeepLift",  "GradientShap","LRP", "FeatureAblation", "Occlusion","Lime") #, "Lime"
+dl_cat <- c(rep("Deep learning - gradient based", 3), rep("Deep learning - perturbation", 3))
+dl_cat_num = 1
+df <- data.frame()
+for (method in nn_methods){
+  j=1 # repeat times
+  while(j<=10){
+    for(nGroups in c(10,20)){#seq(5,20,5)
+      for (nCells in seq(50,250,50)){
+        tmp = readRDS(glue("../../Result/TS_Classification/{classification_method}/Setting2/top{topN}/{method}/{classification_method}_top{topN}_result_nGroups_{nGroups}_nCells_{nCells}_iteration{j}.rds"))
+        tmp[[2]][is.na(tmp[[2]])]=0
+        tmp_mean  = rowMeans(tmp[[2]])
+        tmp_res <- c(tmp_mean[[7]],tmp_mean[[1]],tmp_mean[[2]], nGroups, nCells, j, method, dl_cat[dl_cat_num])
+        df <- rbind(df, tmp_res)
+      }
+    }
+    j=j+1
+  }
+  dl_cat_num = dl_cat_num+1
+  cat(glue("finished {method}  \n"))
+}
+df <- as.data.frame(df)
+colnames(df) <- c("F1", "Sensitivity", "Specificity", "nGroups", "nCells", "Iteration", "Method", "Category")
+df$Sensitivity <- as.numeric(df$Sensitivity)
+df$Specificity <- as.numeric(df$Specificity)
+df$F1 <- as.numeric(df$F1)
+df.nn <- df
+```
+
+```{r}
+df.combine = rbind(df.nn, df.trad)
+df.combine$Category = factor(df.combine$Category)
+df.combine$Method = factor(df.combine$Method, levels = c(nn_methods, trad_methods))
+df.combine$nGroups = factor(df.combine$nGroups)
+df.combine$nCells = factor(df.combine$nCells, levels = c(250,200,150,100,50))
+df.combine$data = "TS"
+df.combine.20 <- df.combine[df.combine$nGroups == 20,]
+df.combine.10 <- df.combine[df.combine$nGroups == 10,]
+
+df.combine.20.ts <- df.combine.20
+df.combine.10.ts <- df.combine.10
+df.combine.ts <- df.combine
+df.combine.ts$data = "TS"
+```
+
+# combine F1 balloonplot nGroups 20
+```{r, fig.width=3}
+df.ballon.tm <- aggregate(F1 ~ Method + nCells + data, data=df.combine.20.tm, FUN=median)
+df.ballon.2.tm <- data.frame()
+for (i in c(50,100,150,200,250)) {
+  df.tmp <- df.ballon.tm[df.ballon.tm$nCells ==i,]
+  df.tmp$Rank <- rank(df.tmp$F1)
+  df.ballon.2.tm <- rbind(df.ballon.2.tm, df.tmp)
+}
+
+df.ballon.ts <- aggregate(F1 ~ Method + nCells + data, data=df.combine.20.ts, FUN=median)
+df.ballon.2.ts <- data.frame()
+for (i in c(50,100,150,200,250)) {
+  df.tmp <- df.ballon.ts[df.ballon.ts$nCells ==i,]
+  df.tmp$Rank <- rank(df.tmp$F1)
+  df.ballon.2.ts <- rbind(df.ballon.2.ts, df.tmp)
+}
+
+
+df.ballon.2 <- rbind(df.ballon.2.tm, df.ballon.2.ts)
+df.ballon.2$nGroups <- factor(df.ballon.2$nCells, levels = c(50,100,150,200,250))
+df.ballon.2$Method <- factor(df.ballon.2$Method, levels = c(nn_methods,trad_methods))
+#ggballoonplot(data=df.ballon.2, x="Method", y="nGroups", size="Rank", color="data", fill = "NA")
+p1 = ggballoonplot(data=df.ballon.2, x="Method", y="nGroups", size="Rank", color="data", fill = "NA")+theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+p1
+ggsave(p1, width=5, height = 4, filename = glue("../../Figures/Combined_Setting2/Classification/{classification_method}_Setting2_balloonplot_top{topN}_nGroups20_F1.pdf"))
+```

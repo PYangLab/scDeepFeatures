@@ -1,0 +1,1 @@
+Rscript setting2_runScDD.R > log_setting2_runScDD.txt

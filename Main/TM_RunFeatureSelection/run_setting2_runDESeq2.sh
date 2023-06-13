@@ -1,0 +1,1 @@
+Rscript setting2_runDESeq2.R > log_setting2_runDESeq2.txt

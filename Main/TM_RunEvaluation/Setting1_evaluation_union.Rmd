@@ -1,0 +1,274 @@
+---
+title: "Evaluation"
+author: "Hao Huang"
+date: '2022-07-03'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load 
+## load packages
+```{r}
+suppressPackageStartupMessages({
+  library(SingleCellExperiment)
+  library(Seurat)
+  library(caret)
+  library(kknn)
+  
+  library(scater)
+  library(tidyverse)
+  library(dplyr)
+  
+  library(glue)
+  library(stringr)
+})
+```
+
+useful function
+```{r}
+source("../../Utils/utils.R")
+source("../../Utils/Classification_methods/doEval.R")
+```
+
+# KKNN
+## Deep learning methods evaluation loop 
+```{r}
+nn_methods = c("DeepLift", "GradientShap", "LRP","FeatureAblation", "Occlusion","Lime")
+```
+
+
+```{r}
+n=1 # seed number 1
+j=1 # repeat times
+while(j<=10){
+  for(nGroups in c(5,10,15,20)){ # cell type number 5:20
+  # read sce
+  sce = readRDS(glue("../../Data/Simulation/Tabula_muris/Setting1/Simulation_setting1_nCells_200_nGroups_{nGroups}__iteration{j}_seeds{n}.rds"))
+  rownames(sce) = str_replace_all(rownames(sce), "_", "-") # compatibale with seurat
+  
+  # split 
+  res.split = train_test_split(rna = sce, cty = sce$cellTypes, seedInput = 1234)
+  train.rna = res.split$train.rna
+  train.cty = res.split$train.cty
+  test.rna = res.split$test.rna
+  test.cty = res.split$test.cty
+  cellTypes = levels(as.factor(train.rna$cellTypes))
+  
+  # iteration over methods, results
+  for (method in nn_methods){
+    #work around of file name
+    file_list = list.files(glue("../../Result/Fs_marker/Nn/Setting1/{method}/dataset_seeds_{n}/"))
+    for (topN in c(5, 10, 20)) { #5, 10, 20, 50, 100
+      union_genes = c()
+      for (anchor_celltype_num in (c(1:length(cellTypes))-1)){
+        anchor_celltype = cellTypes[anchor_celltype_num+1]
+        
+        # work 
+        file = file_list[grep(anchor_celltype, file_list)]
+        res_fs = read_csv(glue("../../Result/Fs_marker/Nn/Setting1/{method}/dataset_seeds_{n}/{file}"), show_col_types = FALSE)
+        gene_names = c(res_fs[,1])[[1]]
+        gene_names = str_replace_all(gene_names, "_","-")
+        a = gene_names[1:topN]
+        union_genes = c(union_genes, a)
+      }
+      union_genes = unique(union_genes)
+      tmp_sce = train.rna[union_genes,]
+      set.seed(1)
+      res = doKKnn_simple_union(tmp_sce, tmp_sce$cellTypes, test.rna[union_genes,],  test.cty)
+      cat("finished KKnn")
+      print("Accuracy is:")
+      print(res[[1]][,1][1])
+      dir.create(glue("../../Result/Classification/KKnn/Setting1/top{topN}"), showWarnings = FALSE)
+      dir.create(glue("../../Result/Classification/KKnn/Setting1/top{topN}/{method}"), showWarnings = FALSE)
+      dir.create(glue("../../Result/Classification/KKnn/Setting1/top{topN}/{method}/dataset_seeds_{n}"), showWarnings = FALSE)
+      saveRDS(res, file = glue("../../Result/Classification/KKnn/Setting1/top{topN}/{method}/dataset_seeds_{n}/KKnn_top{topN}_result_nGroups_{nGroups}_iteration{j}_seeds{n}_method_{method}.rds"))
+      }
+  }
+  cat(glue("==================finished {n} datasets================= \n"))
+  n=n+1
+  }
+  j=j+1
+}
+```
+
+## Traditional methods evaluation loop
+```{r}
+trad_methods = c("runDESeq2", "runLimmavoom", "runScDD")
+```
+
+```{r}
+n=1 # seed number 1
+j=1 # repeat times
+while(j<=10){
+  for(nGroups in c(5,10,15,20)){ # cell type number 5:20
+  # read sce
+  sce = readRDS(glue("../../Data/Simulation/Tabula_muris/Setting1/Simulation_setting1_nCells_200_nGroups_{nGroups}__iteration{j}_seeds{n}.rds"))
+  rownames(sce) = str_replace_all(rownames(sce), "_", "-") # compatibale with seurat
+  
+  # split 
+  res.split = train_test_split(rna = sce, cty = sce$cellTypes, seedInput = 1234)
+  train.rna = res.split$train.rna
+  train.cty = res.split$train.cty
+  test.rna = res.split$test.rna
+  test.cty = res.split$test.cty
+  cellTypes = levels(as.factor(train.rna$cellTypes))
+    # iteration over methods, results
+    for (method in trad_methods){
+      res_fs = readRDS(glue("../../Result/Fs_marker/Traditional/Setting1/{method}/Res_{method}_Simulation_setting1_nCells_200_nGroups_{nGroups}__iteration{j}_seeds{n}.rds"))
+      for (topN in c(5,10,20)){ #5, 10, 20, 50, 100
+        union_genes = c()
+        for (anchor_celltype_num in (c(1:length(cellTypes))-1)){
+            anchor_celltype = cellTypes[anchor_celltype_num+1]
+
+            tmp_res_fs = res_fs$result[[anchor_celltype_num+1]]
+            rownames(tmp_res_fs) = str_replace_all(rownames(tmp_res_fs), "_","-") # covert this, to make seurat and non-seruat methods compatiable
+            a = rownames(tmp_res_fs)[1:topN]
+            union_genes = c(union_genes, a)
+        }
+        union_genes = unique(union_genes)
+        tmp_sce = train.rna[union_genes,]
+        set.seed(1)
+        res = doKKnn_simple_union(tmp_sce, tmp_sce$cellTypes, test.rna[union_genes,],  test.cty)
+        cat("finished KKnn")
+        print("Accuracy is:")
+        print(res[[1]][,1][1])
+        dir.create(glue("../../Result/Classification/KKnn/Setting1/top{topN}"), showWarnings = FALSE)
+        dir.create(glue("../../Result/Classification/KKnn/Setting1/top{topN}/{method}"), showWarnings = FALSE)
+        dir.create(glue("../../Result/Classification/KKnn/Setting1/top{topN}/{method}/dataset_seeds_{n}"), showWarnings = FALSE)
+        saveRDS(res, file = glue("../../Result/Classification/KKnn/Setting1/top{topN}/{method}/dataset_seeds_{n}/KKnn_top{topN}_result_nGroups_{nGroups}_iteration{j}_seeds{n}_method_{method}.rds"))
+      }
+      
+    }
+    cat(glue("================finished {n} datasets================="))
+    n=n+1
+    
+    }
+    j=j+1
+}
+```
+
+
+
+# SVM
+## Deep learning methods evaluation loop 
+```{r}
+nn_methods = c("DeepLift", "GradientShap", "LRP","FeatureAblation", "Occlusion","Lime")
+```
+
+
+```{r}
+n=1 # seed number 1
+j=1 # repeat times
+while(j<=10){
+  for(nGroups in c(5,10,15,20)){ # cell type number 5:20
+  # read sce
+  sce = readRDS(glue("../../Data/Simulation/Tabula_muris/Setting1/Simulation_setting1_nCells_200_nGroups_{nGroups}__iteration{j}_seeds{n}.rds"))
+  rownames(sce) = str_replace_all(rownames(sce), "_", "-") # compatibale with seurat
+  
+  # split 
+  res.split = train_test_split(rna = sce, cty = sce$cellTypes, seedInput = 1234)
+  train.rna = res.split$train.rna
+  train.cty = res.split$train.cty
+  test.rna = res.split$test.rna
+  test.cty = res.split$test.cty
+  cellTypes = levels(as.factor(train.rna$cellTypes))
+  
+  # iteration over methods, results
+  for (method in nn_methods){
+    #work around of file name
+    file_list = list.files(glue("../../Result/Fs_marker/Nn/Setting1/{method}/dataset_seeds_{n}/"))
+    for (topN in c(5, 10, 20)) { #5, 10, 20, 50, 100
+      union_genes = c()
+      for (anchor_celltype_num in (c(1:length(cellTypes))-1)){
+        anchor_celltype = cellTypes[anchor_celltype_num+1]
+        
+        # work 
+        file = file_list[grep(anchor_celltype, file_list)]
+        res_fs = read_csv(glue("../../Result/Fs_marker/Nn/Setting1/{method}/dataset_seeds_{n}/{file}"), show_col_types = FALSE)
+        gene_names = c(res_fs[,1])[[1]]
+        gene_names = str_replace_all(gene_names, "_","-")
+        a = gene_names[1:topN]
+        union_genes = c(union_genes, a)
+      }
+      union_genes = unique(union_genes)
+      tmp_sce = train.rna[union_genes,]
+      set.seed(1)
+      res = doSvm_simple_union(tmp_sce, tmp_sce$cellTypes, test.rna[union_genes,],  test.cty)
+      cat("finished SVM")
+      print("Accuracy is:")
+      print(res[[1]][,1][1])
+      dir.create(glue("../../Result/Classification/SVM/Setting1/top{topN}"), showWarnings = FALSE)
+      dir.create(glue("../../Result/Classification/SVM/Setting1/top{topN}/{method}"), showWarnings = FALSE)
+      dir.create(glue("../../Result/Classification/SVM/Setting1/top{topN}/{method}/dataset_seeds_{n}"), showWarnings = FALSE)
+      saveRDS(res, file = glue("../../Result/Classification/SVM/Setting1/top{topN}/{method}/dataset_seeds_{n}/KKnn_top{topN}_result_nGroups_{nGroups}_iteration{j}_seeds{n}_method_{method}.rds"))
+      }
+    
+
+  }
+  cat(glue("==================finished {n} datasets================= \n"))
+  n=n+1
+  
+  }
+  j=j+1
+}
+```
+
+## Traditional methods evaluation loop
+```{r}
+trad_methods = c("runDESeq2", "runLimmavoom", "runScDD")
+```
+
+```{r}
+n=1 # seed number 1
+j=1 # repeat times
+while(j<=10){
+  for(nGroups in c(5,10,15,20)){ # cell type number 5:20
+  # read sce
+  sce = readRDS(glue("../../Data/Simulation/Tabula_muris/Setting1/Simulation_setting1_nCells_200_nGroups_{nGroups}__iteration{j}_seeds{n}.rds"))
+  rownames(sce) = str_replace_all(rownames(sce), "_", "-") # compatibale with seurat
+  
+  # split 
+  res.split = train_test_split(rna = sce, cty = sce$cellTypes, seedInput = 1234)
+  train.rna = res.split$train.rna
+  train.cty = res.split$train.cty
+  test.rna = res.split$test.rna
+  test.cty = res.split$test.cty
+  cellTypes = levels(as.factor(train.rna$cellTypes))
+    # iteration over methods, results
+    for (method in trad_methods){
+      res_fs = readRDS(glue("../../Result/Fs_marker/Traditional/Setting1/{method}/Res_{method}_Simulation_setting1_nCells_200_nGroups_{nGroups}__iteration{j}_seeds{n}.rds"))
+      for (topN in c(5,10,20)){ #5, 10, 20, 50, 100
+        union_genes = c()
+        for (anchor_celltype_num in (c(1:length(cellTypes))-1)){
+            anchor_celltype = cellTypes[anchor_celltype_num+1]
+            
+            tmp_res_fs = res_fs$result[[anchor_celltype_num+1]]
+            rownames(tmp_res_fs) = str_replace_all(rownames(tmp_res_fs), "_","-") # covert this, to make seurat and non-seruat methods compatiable
+            a = rownames(tmp_res_fs)[1:topN]
+            union_genes = c(union_genes, a)
+        }
+        union_genes = unique(union_genes)
+        tmp_sce = train.rna[union_genes,]
+        set.seed(1)
+        res = doSvm_simple_union(tmp_sce, tmp_sce$cellTypes, test.rna[union_genes,],  test.cty)
+        cat("finished SVM")
+        print("Accuracy is:")
+        print(res[[1]][,1][1])
+        dir.create(glue("../../Result/Classification/SVM/Setting1/top{topN}"), showWarnings = FALSE)
+        dir.create(glue("../../Result/Classification/SVM/Setting1/top{topN}/{method}"), showWarnings = FALSE)
+        dir.create(glue("../../Result/Classification/SVM/Setting1/top{topN}/{method}/dataset_seeds_{n}"), showWarnings = FALSE)
+        saveRDS(res, file = glue("../../Result/Classification/SVM/Setting1/top{topN}/{method}/dataset_seeds_{n}/KKnn_top{topN}_result_nGroups_{nGroups}_iteration{j}_seeds{n}_method_{method}.rds"))
+      }
+      
+    }
+    cat(glue("================finished {n} datasets================="))
+    n=n+1
+    
+    }
+    j=j+1
+}
+```
+

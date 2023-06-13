@@ -1,0 +1,1 @@
+Rscript setting4_all_markers_runLimmavoom.R > log_setting4_all_markers_runLimmavoom.txt

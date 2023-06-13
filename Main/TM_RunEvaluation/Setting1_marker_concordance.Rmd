@@ -1,0 +1,179 @@
+---
+title: "Setting1_marker_reproducibility"
+author: "Hao Huang"
+date: "14/11/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Load
+```{r}
+suppressPackageStartupMessages({
+  library(SingleCellExperiment)
+  library(Seurat)
+
+  library(tidyverse)
+  library(dplyr)
+  
+  library(glue)
+  library(stringr)
+  
+  source("../../Utils/utils.R")
+  
+  jaccard <- function(a, b) {
+    intersection = length(intersect(a, b))
+    union = length(a) + length(b) - intersection
+    return (intersection/union)
+}
+})
+```
+
+
+```{r}
+n=1 # seed number 1
+j=1 # repeat times
+nGroups=5
+sce = readRDS(glue("../../Data/Simulation/Tabula_muris/Setting1/Simulation_setting1_nCells_200_nGroups_{nGroups}__iteration{j}_seeds{n}.rds"))
+rownames(sce) = str_replace_all(rownames(sce), "_", "-")
+res.split = train_test_split(rna = sce, cty = sce$cellTypes, seedInput = 1234)
+train.rna = res.split$train.rna
+train.cty = res.split$train.cty
+test.rna = res.split$test.rna
+test.cty = res.split$test.cty
+### filter lowly expressed genes, if it express less than 1% in within every cell types 
+exprsMat <- logcounts(train.rna)
+exprs_pct <- 0.01
+
+label = train.rna$cellTypes
+cts = unique(train.rna$cellTypes)
+
+meanPct.list <- list()
+for(i in 1:length(cts)) {
+  idx <- which(label == cts[i])
+  meanPct.list[[i]] <- (Matrix::rowSums(exprsMat[, idx, drop = FALSE] > 0)/sum(label == cts[i])) > exprs_pct
+}
+names(meanPct.list) <- cts
+keep = rowSums(do.call(cbind, meanPct.list)) > 0 # remove any genes that are expressed lower than 5% in each and every cell type
+
+train.rna = train.rna[keep, ]
+test.rna = test.rna[keep, ]
+###
+
+test.seu = as.Seurat(test.rna)
+test.seu$cellTypes2 <- test.seu$cellTypes
+test.seu$cellTypes2[test.seu$cellTypes2 == 'astrocyte'] <- 'CT1'
+test.seu$cellTypes2[test.seu$cellTypes2 == 'basal cell of epidermis'] <- 'CT2'
+test.seu$cellTypes2[test.seu$cellTypes2 == 'immature T cell'] <- 'CT3'
+test.seu$cellTypes2[test.seu$cellTypes2 == 'mesenchymal cell'] <- 'CT4'
+test.seu$cellTypes2[test.seu$cellTypes2 == 'skeletal muscle satellite stem cell'] <- 'CT5'
+test.seu@active.ident = as.factor(test.seu$cellTypes2)
+
+
+```
+
+# Method concordance correlation
+```{r,fig.width=3, fig.height=3}
+cor_method <- data.frame()
+cellTypes = levels(as.factor(train.rna$cellTypes))
+anchor_celltype_num = 4
+anchor_celltype = cellTypes[anchor_celltype_num+1]
+nn_methods = c("DeepLift", "GradientShap", "LRP","FeatureAblation", "Occlusion","Lime")
+trad_methods = c("runDESeq2", "runLimmavoom", "runScDD")
+total_methods = c(nn_methods, trad_methods)
+total_methods_len <- length(total_methods)
+for (method_i_num in c(1:(total_methods_len-1))){
+  for (method_j_num in c((method_i_num+1):total_methods_len)){
+    method_i = total_methods[method_i_num]
+    method_j = total_methods[method_j_num]
+    
+    if (method_i %in% trad_methods){
+      method_i.res_fs = readRDS(glue("../../Result/Fs_marker/Traditional/Setting1/{method_i}/Res_{method_i}_Simulation_setting1_nCells_200_nGroups_{nGroups}__iteration{j}_seeds{n}.rds"))
+      method_i.tmp_res_fs = method_i.res_fs$result[[anchor_celltype_num+1]]
+      rownames(method_i.tmp_res_fs) = str_replace_all(rownames(method_i.tmp_res_fs), "_","-") 
+      if(method_i == "runDESeq2"){
+        method_i.tmp_res_fs$rank <- rank(method_i.tmp_res_fs$stat)
+      }else if(method_i == "runLimmavoom"){
+        method_i.tmp_res_fs$rank <- rank(method_i.tmp_res_fs$t)
+      }else if(method_i == "runScDD"){
+        method_i.tmp_res_fs$rank <- rank(-log(method_i.tmp_res_fs$combined.pvalue.adj+0.0001))
+      }
+      method_i.gene = rownames(method_i.tmp_res_fs)[1:1000]
+    }else{
+      file_list = list.files(glue("../../Result/Fs_marker/Nn/Setting1_all/{method_i}/dataset_seeds_{n}/"))
+      file = file_list[grep(anchor_celltype, file_list)]
+      method_i.res_fs = read_csv(glue("../../Result/Fs_marker/Nn/Setting1_all/{method_i}/dataset_seeds_{n}/{file}"), show_col_types = FALSE)
+      method_i.res_fs <-  as.data.frame(method_i.res_fs)
+      colnames(method_i.res_fs) <- c("name", "index", "score", "rank", "logfc")
+      method_i.res_fs$name = str_replace_all(method_i.res_fs$name , "_","-")
+      method_i.gene = method_i.res_fs$name[1:1000]
+    }
+    
+    if (method_j %in% trad_methods){
+      method_j.res_fs = readRDS(glue("../../Result/Fs_marker/Traditional/Setting1/{method_j}/Res_{method_j}_Simulation_setting1_nCells_200_nGroups_{nGroups}__iteration{j}_seeds{n}.rds"))
+      method_j.tmp_res_fs = method_j.res_fs$result[[anchor_celltype_num+1]]
+      rownames(method_j.tmp_res_fs) = str_replace_all(rownames(method_j.tmp_res_fs), "_","-")
+      if(method_j == "runDESeq2"){
+        method_j.tmp_res_fs$rank <- rank(method_j.tmp_res_fs$stat)
+      }else if(method_j == "runLimmavoom"){
+        method_j.tmp_res_fs$rank <- rank(method_j.tmp_res_fs$t)
+      }else if(method_j == "runScDD"){
+        method_j.tmp_res_fs$rank <- rank(-log(method_j.tmp_res_fs$combined.pvalue.adj+0.0001))
+      }
+      method_j.gene = rownames(method_j.tmp_res_fs)[1:1000]
+    }else{
+      file_list = list.files(glue("../../Result/Fs_marker/Nn/Setting1_all/{method_j}/dataset_seeds_{n}/"))
+      file = file_list[grep(anchor_celltype, file_list)]
+      method_j.res_fs = read_csv(glue("../../Result/Fs_marker/Nn/Setting1_all/{method_j}/dataset_seeds_{n}/{file}"), show_col_types = FALSE)
+      method_j.res_fs <-  as.data.frame(method_j.res_fs)
+      colnames(method_j.res_fs) <- c("name", "index", "score", "rank", "logfc")
+      method_j.res_fs$name = str_replace_all(method_j.res_fs$name , "_","-")
+      method_j.gene = method_j.res_fs$name[1:1000]
+      
+      
+    }
+    
+    tmp.cor = jaccard(method_i.gene,method_j.gene)
+    cor_method <- rbind(cor_method, c(tmp.cor, anchor_celltype, method_i, method_j))
+    
+  }
+}
+
+
+
+
+colnames(cor_method) <- c("jaccardIndex",  "celltype", "methodi", "methodj")
+cor_method$jaccardIndex <- as.numeric(cor_method$jaccardIndex)
+```
+
+
+
+
+
+```{r}
+cor_method_median <- aggregate(pearsonCoef ~ methodi+methodj, data=cor_method, FUN=mean)
+cor_method$methodi = factor(cor_method$methodi, levels = total_methods)
+cor_method$methodj = factor(cor_method$methodj, levels = total_methods)
+ggplot(aes(x=methodi, y=methodj, fill=pearsonCoef), data = cor_method) + geom_tile() + theme_classic()+theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+```
+
+```{r,fig.width=4, fig.height=3}
+library(igraph)
+library(pheatmap)
+cor_method_median <- aggregate(jaccardIndex ~ methodi+methodj, data=cor_method, FUN=mean)
+cor_method_median$methodi <- factor(cor_method_median$methodi, levels = total_methods)
+cor_method_median$methodj <- factor(cor_method_median$methodj, levels = total_methods)
+A = graph.data.frame(cor_method_median,directed=FALSE)
+B = as_adjacency_matrix(A,names=TRUE,sparse=FALSE,attr="jaccardIndex")
+cor_method_median.mat = as.matrix(B)
+cor_method_median.mat <- cor_method_median.mat[c(3,5,7,4,8,6,1,2,9),]
+cor_method_median.mat <- cor_method_median.mat[,c(3,5,7,4,8,6,1,2,9)]
+p1 = pheatmap(cor_method_median.mat,cluster_cols = F, cluster_rows = F,main = anchor_celltype,color=colorRampPalette(c("white", "pink", "red"))(50))
+ggsave(p1, width = 5, height = 4, filename = glue("../../Figures/Setting1/Concordance/example_dataset_{anchor_celltype}_jaccard_top1000.pdf"))
+```
+
+
+

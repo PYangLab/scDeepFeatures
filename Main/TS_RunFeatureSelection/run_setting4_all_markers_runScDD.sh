@@ -1,0 +1,1 @@
+Rscript setting4_all_markers_runScDD.R > log_setting4_all_markers_runScDD.txt

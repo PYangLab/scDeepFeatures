@@ -1,0 +1,133 @@
+---
+title: "Figure 2 barplot"
+author: "Hao Huang"
+date: '2022-09-08'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load 
+## load packages
+```{r}
+suppressPackageStartupMessages({
+  library(SingleCellExperiment)
+  library(Seurat)
+  library(caret)
+  library(kknn)
+  
+  library(scater)
+  library(tidyverse)
+  library(dplyr)
+  
+  library(glue)
+  library(stringr)
+  library(ggplot2)
+  library(ggpubr)
+})
+```
+
+useful function
+```{r}
+source("../../Utils/utils.R")
+source("../../Utils/Classification_methods/doEval.R")
+```
+
+```{r}
+topN = 10
+```
+
+# Classification
+```{r}
+classification_method = "KKnn" # KKnn 
+```
+
+
+```{r}
+# traditional
+df = data.frame()
+trad_methods = c("runDESeq2", "runLimmavoom", "runScDD")
+for (method in trad_methods){
+for (seeds in c(1:40)){
+  res.trad.files = list.files(glue("../../Result/TS_Classification/{classification_method}/Setting1/top{topN}/{method}/dataset_seeds_{seeds}"))
+  tmp = readRDS(glue("../../Result/TS_Classification/{classification_method}/Setting1/top{topN}/{method}/dataset_seeds_{seeds}/{res.trad.files}"))
+  tmp[[2]][is.na(tmp[[2]])]=0
+  tmp_mean  = rowMeans(tmp[[2]])
+  res.trad.sen = tmp_mean[[1]]
+  res.trad.spe = tmp_mean[[2]]
+  res.trad.pre = tmp_mean[[5]]
+  res.trad.F1 = tmp_mean[[7]]
+  tmp_res <- c(res.trad.sen, res.trad.spe, res.trad.pre, res.trad.F1, method, "Traditional")
+  df <- rbind(df, tmp_res)
+}
+cat(glue("finished {method}  \n"))
+}
+colnames(df) <- c("Senstivity", "Specificity", "Precision", "F1", "Method", "Category")
+df$nGroups <- rep(c(5,10,15,20), 10)
+df.trad <- df
+```
+
+
+```{r}
+# traditional
+df = data.frame()
+nn_methods = c("DeepLift", "GradientShap", "LRP","FeatureAblation", "Occlusion", "Lime")
+dl_cat <- c(rep("Deep learning - gradient based", 3), rep("Deep learning - perturbation", 3))
+dl_cat_num = 1
+for (method in nn_methods){
+for (seeds in c(1:40)){
+  res.trad.files = list.files(glue("../../Result/TS_Classification/{classification_method}/Setting1/top{topN}/{method}/dataset_seeds_{seeds}"))
+  tmp = readRDS(glue("../../Result/TS_Classification/{classification_method}/Setting1/top{topN}/{method}/dataset_seeds_{seeds}/{res.trad.files}"))
+  tmp[[2]][is.na(tmp[[2]])]=0
+  tmp_mean  = rowMeans(tmp[[2]])
+  res.trad.sen = tmp_mean[[1]]
+  res.trad.spe = tmp_mean[[2]]
+  res.trad.pre = tmp_mean[[5]]
+  res.trad.F1 = tmp_mean[[7]]
+  tmp_res <- c(res.trad.sen, res.trad.spe, res.trad.pre, res.trad.F1, method, dl_cat[dl_cat_num])
+  df <- rbind(df, tmp_res)
+}
+  dl_cat_num = dl_cat_num + 1
+cat(glue("finished {method}  \n"))
+}
+colnames(df) <- c("Senstivity", "Specificity", "Precision", "F1", "Method", "Category")
+df$nGroups <- rep(c(5,10,15,20), 10)
+df.nn <- df
+```
+
+```{r}
+df = rbind(df.nn, df.trad)
+df$Senstivity = as.numeric(df$Senstivity)
+df$Specificity = as.numeric(df$Specificity)
+df$Precision = as.numeric(df$Precision)
+df$F1 = as.numeric(df$F1)
+df$Category = factor(df$Category,levels = c("Deep learning - gradient based", "Deep learning - perturbation",  "Traditional"))
+df$Method = factor(df$Method, levels = c(nn_methods, trad_methods))
+df$nGroups = factor(df$nGroups)
+```
+
+
+#### individual metric boxplot
+F1
+```{r, fig.width=4, fig.height=3}
+p1=ggplot(aes(x=Method, y=F1, color=Method, fill=Method), data = df) + geom_boxplot(alpha=0.5) + facet_wrap(nGroups ~., ncol = 2, strip.position = "top") + theme_light()+theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+p1
+ggsave(p1,height = 5, width = 7, filename = glue("../../Figures/TS_Setting1/Classification/{classification_method}_Setting1_boxplot_top{topN}_F1.pdf"))
+```
+
+### significant test wilcox rank sum
+```{r}
+for (nGroup in c(5,10,15,20)){
+  print(glue("at {nGroup} cell type ================================================================"))
+  for (method in nn_methods){
+    x = df[df$nGroups == nGroup & df$Method==method,]$F1
+    y = df[df$nGroups == nGroup & df$Method=="11_runScDD",]$F1
+    test.res = wilcox.test(x, y, paired = TRUE, alternative = "greater")
+    print(glue("p-val of {method} larger than MAST is {test.res$p.value}"))
+  }
+}
+```
+
+#

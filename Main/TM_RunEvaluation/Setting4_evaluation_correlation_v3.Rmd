@@ -1,0 +1,189 @@
+---
+title: "Setting4 evalluation"
+author: "Hao Huang"
+date: "07/10/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load 
+## load packages
+```{r}
+suppressPackageStartupMessages({
+  library(SingleCellExperiment)
+  library(Seurat)
+  library(caret)
+  library(kknn)
+  
+  library(scater)
+  library(tidyverse)
+  library(dplyr)
+  
+  library(glue)
+  library(stringr)
+})
+```
+
+useful function
+```{r}
+source("../../Utils/utils.R")
+jaccard <- function(a, b) {
+    intersection = length(intersect(a, b))
+    union = length(a) + length(b) - intersection
+    return (intersection/union)
+}
+```
+
+
+# 10 cell type Overall - scores
+## Deep learning methods 
+```{r}
+nn_methods = c("DeepLift", "GradientShap", "LRP" , "FeatureAblation", "Occlusion"  ,"Lime_nsample500")
+```
+
+
+```{r,fig.width=3, fig.height=3}
+####################
+n=1 # seed number 1
+sce = readRDS(glue("../../Data/Simulation/Tabula_muris/Setting4/Simulation_setting4_seed_{n}_iteration1.rds"))
+rownames(sce) = str_replace_all(rownames(sce), "_", "-") # compatibale with seurat
+# split 
+res.split = train_test_split(rna = sce, cty = sce$cellTypes, seedInput = 1234)
+train.rna = res.split$train.rna
+train.cty = res.split$train.cty
+test.rna = res.split$test.rna
+test.cty = res.split$test.cty
+cellTypes = levels(as.factor(train.rna$cellTypes))
+####################
+
+df <- data.frame()
+
+for (method in nn_methods){
+  for (anchor_celltype_num in (c(1:length(cellTypes))-1)){
+    anchor_celltype = cellTypes[anchor_celltype_num+1]
+    x=c(1:10)
+    for(j in c(1:9)){
+      x = x[! x %in% j]
+      for(i in x){
+        file_list = list.files(glue("../../Result/Fs_marker/Nn/Setting4/{method}/seed_{n}_iteration{j}_all/"))
+        file = file_list[grep(anchor_celltype, file_list)]
+        res_fs1 = suppressMessages(read_csv(glue("../../Result/Fs_marker/Nn/Setting4/{method}/seed_{n}_iteration{j}_all/{file}"), show_col_types = FALSE))
+        
+      
+        file_list = list.files(glue("../../Result/Fs_marker/Nn/Setting4/{method}/seed_{n}_iteration{i}_all/"))
+        file = file_list[grep(anchor_celltype, file_list)]
+        res_fs2 = suppressMessages(read_csv(glue("../../Result/Fs_marker/Nn/Setting4/{method}/seed_{n}_iteration{i}_all/{file}"), show_col_types = FALSE))
+        
+        res_fs1 <-  as.data.frame(res_fs1)
+        colnames(res_fs1) <- c("name", "index", "score", "rank", "logfc")
+        
+        res_fs2 <-  as.data.frame(res_fs2)
+        colnames(res_fs2) <- c("name", "index", "score", "rank", "logfc")
+        res_fs2 = res_fs2[match(res_fs1$name, res_fs2$name),]
+       #plot(res_fs1$score, res_fs2$score)
+        
+        df <- rbind(df, c(cor(res_fs1$score, res_fs2$score, method = "pearson"), j, i, anchor_celltype, method, "baseline"))
+      }
+    }
+  }
+  cat(glue("finished {method}"))
+}
+colnames(df) <- c("value", "j", "i", "anchor_ct", "method", "net")
+df$value <- as.numeric(df$value)
+df$anchor_ct <- as.factor(df$anchor_ct)
+df$method <- as.factor(df$method)
+df.nn = df
+saveRDS(df, file = glue("../../Result/Reproducibility/seed_{n}_nn_pearson_correlation.rds"))
+```
+
+
+## Traditional methods
+```{r}
+trad_methods = c("runDESeq2", "runLimmavoom", "runScDD")
+```
+
+
+```{r}
+####################
+n=1 # seed number 1
+sce = readRDS(glue("../../Data/Simulation/Tabula_muris/Setting4/Simulation_setting4_seed_{n}_iteration1.rds"))
+rownames(sce) = str_replace_all(rownames(sce), "_", "-") # compatibale with seurat
+# split 
+res.split = train_test_split(rna = sce, cty = sce$cellTypes, seedInput = 1234)
+train.rna = res.split$train.rna
+train.cty = res.split$train.cty
+test.rna = res.split$test.rna
+test.cty = res.split$test.cty
+cellTypes = levels(as.factor(train.rna$cellTypes))
+####################
+
+df <- data.frame()
+for (method in trad_methods){
+  for (anchor_celltype_num in (c(1:length(cellTypes))-1)){
+    anchor_celltype = cellTypes[anchor_celltype_num+1]
+    x=c(1:10)
+    for(j in c(1:9)){
+      x = x[! x %in% j]
+      for(i in x){
+        res_fs = readRDS(glue("../../Result/Fs_marker/Traditional/Setting4/{method}/Res_{method}_Simulation_setting4_seed_{n}_iteration{j}_all.rds"))
+        tmp_res_fs1 = res_fs$result[[anchor_celltype]]
+        
+        res_fs = readRDS(glue("../../Result/Fs_marker/Traditional/Setting4/{method}/Res_{method}_Simulation_setting4_seed_{n}_iteration{i}_all.rds"))
+        tmp_res_fs2 = res_fs$result[[anchor_celltype]]
+
+        tmp_res_fs1$name = rownames(tmp_res_fs1)
+        tmp_res_fs2$name = rownames(tmp_res_fs2)
+        tmp_res_fs2 = tmp_res_fs2[match(tmp_res_fs1$name, tmp_res_fs2$name),]
+        # tmp_res_fs1$score = -log(tmp_res_fs1[,5]+1)
+        # tmp_res_fs2$score = -log(tmp_res_fs2[,5]+1)
+        if (method == "runLimmavoom"){
+          tmp_res_fs1$score =  tmp_res_fs1$t
+          tmp_res_fs2$score =  tmp_res_fs2$t
+        } else if (method == "runScDD"){
+          tmp_res_fs1$score =  -log(tmp_res_fs1$combined.pvalue.adj+0.0001)
+          tmp_res_fs2$score =  -log(tmp_res_fs2$combined.pvalue.adj+0.0001)
+        } else if (method == "runDESeq2"){
+          tmp_res_fs1$score = tmp_res_fs1$stat
+          tmp_res_fs2$score = tmp_res_fs2$stat
+        }
+        #plot(tmp_res_fs1$score,tmp_res_fs2$score)
+        
+        df <- rbind(df, c(cor(tmp_res_fs1$score,tmp_res_fs2$score, method = "pearson"), j, i, anchor_celltype, method, "traditional"))
+      }
+    }
+  }
+  cat(glue("finished {method}"))
+}
+colnames(df) <- c("value", "j", "i", "anchor_ct", "method", "net")
+df$value <- as.numeric(df$value)
+df$anchor_ct <- as.factor(df$anchor_ct)
+df$method <- as.factor(df$method)
+df.trad = df
+saveRDS(df.trad, file = glue("../../Result/Reproducibility/seed_{n}_trad_pearson_correlation.rds"))
+```
+
+
+```{r, fig.width=4}
+df.trad.agg <- aggregate(value~method+net+anchor_ct, data=df.trad, FUN=mean)
+df.combine.all.agg <- rbind(df.nn.combine.agg, df.trad.agg)
+ggplot(aes(x=method, y=value, fill=net), data = df.combine.all.agg) + geom_boxplot() + ylab("Pearson coefficient") +coord_cartesian(ylim = (0:1)) +theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) 
+
+df.combine.all <- rbind(df.nn.combine, df.trad)
+ggplot(aes(x=method, y=value, fill=net), data = df.combine.all) + geom_boxplot() + ylab("Pearson coefficient") +coord_cartesian(ylim = (0:1)) +theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) 
+```
+
+
+
+###averaged cell type
+```{r}
+df.combine <- rbind(df.trad, df.nn)
+df.combine$method <- factor(df.combine$method, levels = c(nn_methods, trad_methods))
+df.combine.agg <- aggregate(value~method+net+anchor_ct, data=df.combine, FUN=mean)
+p1 = ggplot(aes(x=method, y=value, fill=method), data = df.combine.agg) + geom_boxplot() + ylab("Pearson coefficient") +coord_cartesian(ylim = (0:1)) +theme_classic() +theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) 
+p1
+ggsave(p1, height = 5, width = 6, filename = "../../Figures/Setting4/averaged_pearson_correlation.pdf")
+```
+

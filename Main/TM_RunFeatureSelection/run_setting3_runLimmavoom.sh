@@ -1,0 +1,1 @@
+Rscript setting3_runLimmavoom.R > log_setting3_runLimmavoom.txt

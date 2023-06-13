@@ -1,0 +1,163 @@
+---
+title: "Plot evaluation"
+author: "Hao Huang"
+date: "07/07/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load 
+```{r}
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(glue)
+  library(reshape2)
+  library(ggpubr)
+})
+```
+
+
+```{r}
+topN = 10
+```
+
+# Setting 1
+## Classification
+```{r}
+classification_method = "KKnn" #KKnn SVM
+```
+
+
+```{r}
+trad_methods = c("runDESeq2", "runLimmavoom", "runScDD")
+df <- data.frame()
+for (method in trad_methods){
+  j=1 # repeat times
+  while(j<=10){
+    for(nGroups in c(10,20)){#seq(5,20,5)
+      for (nCells in seq(50,250,50)){
+        tmp = readRDS(glue("../../Result/TS_Classification/{classification_method}/Setting2/top{topN}/{method}/{classification_method}_top{topN}_result_nGroups_{nGroups}_nCells_{nCells}_iteration{j}.rds"))
+        tmp[[2]][is.na(tmp[[2]])]=0
+        tmp_mean  = rowMeans(tmp[[2]])
+        tmp_res <- c(tmp_mean[[1]],tmp_mean[[2]],tmp_mean[[7]], nGroups, nCells, j, method, "traditional")
+        df <- rbind(df, tmp_res)
+      }
+    }
+    j=j+1
+  }
+cat(glue("finished {method}  \n"))
+}
+df <- as.data.frame(df)
+colnames(df) <- c("Sensitivity", "Specificity", "F1", "nGroups", "nCells", "Iteration", "Method", "Category")
+df$Sensitivity <- as.numeric(df$Sensitivity)
+df$Specificity <- as.numeric(df$Specificity)
+df$F1 <- as.numeric(df$F1)
+
+df.trad <- df
+
+```
+
+
+```{r}
+# deep learning
+nn_methods = c("DeepLift", "GradientShap", "LRP","FeatureAblation", "Occlusion", "Lime")
+dl_cat <- c(rep("Deep learning - gradient based", 3), rep("Deep learning - perturbation", 4))
+dl_cat_num = 1
+df <- data.frame()
+for (method in nn_methods){
+  j=1 # repeat times
+  while(j<=10){
+    for(nGroups in c(10,20)){#seq(5,20,5)
+      for (nCells in seq(50,250,50)){
+        tmp = readRDS(glue("../../Result/TS_Classification/{classification_method}/Setting2/top{topN}/{method}/{classification_method}_top{topN}_result_nGroups_{nGroups}_nCells_{nCells}_iteration{j}.rds"))
+        tmp[[2]][is.na(tmp[[2]])] = 0
+        tmp_mean  = rowMeans(tmp[[2]])
+        tmp_res <- c(tmp_mean[[1]],tmp_mean[[2]],tmp_mean[[7]], nGroups, nCells, j, method, dl_cat[dl_cat_num])
+        df <- rbind(df, tmp_res)
+      }
+    }
+    j=j+1
+  }
+  dl_cat_num = dl_cat_num+1
+  cat(glue("finished {method}  \n"))
+}
+df <- as.data.frame(df)
+colnames(df) <- c("Sensitivity", "Specificity", "F1", "nGroups", "nCells", "Iteration", "Method", "Category")
+df$Sensitivity <- as.numeric(df$Sensitivity)
+df$Specificity <- as.numeric(df$Specificity)
+df$F1 <- as.numeric(df$F1)
+df.nn <- df
+```
+
+```{r}
+df.combine = rbind(df.nn, df.trad)
+df.combine$Category = factor(df.combine$Category)
+df.combine$Method = factor(df.combine$Method, levels = c(nn_methods, trad_methods))
+df.combine$nGroups = factor(df.combine$nGroups)
+df.combine$nCells = factor(df.combine$nCells, levels = c(50,100,150,200,250))
+
+df.combine.20 <- df.combine[df.combine$nGroups == 20,]
+df.combine.10 <- df.combine[df.combine$nGroups == 10,]
+```
+
+#### all metric line plot
+```{r, fig.width=12, fig.height=4}
+library(dplyr)
+df.final.2 = df.combine
+df.final.2.melt <- melt(df.final.2)
+df.final.2.line <- aggregate(value ~ nGroups + nCells + Method + variable, data=df.final.2.melt, FUN=mean)
+```
+
+#### F1 line plot combine
+```{r}
+p1 = ggplot2::ggplot(aes(x=nCells, y=value, group=Method), data=df.final.2.line[df.final.2.line$variable=="F1",]) + geom_line(aes(color=Method))+geom_point(aes(color=Method))+ facet_wrap(nGroups~. )+theme_classic()
+ggsave(p1, width = 5, height=4, filename = glue("../../Figures/TS_Setting2/Classification/{classification_method}_lineplot_F1_only_topN{topN}.pdf"))
+p1
+```
+
+
+
+#### lm coef
+```{r, fig.width=10, fig.height=4}
+df.lm = df.final.2.line
+df.lm$nCells <- as.numeric(as.character(df.lm$nCells))
+df.lm
+df.lm2 <- data.frame()
+for (method in unique(df.lm$Method)) {
+  for(variable in unique(df.lm$variable)){
+    for(nGroups in c(10, 20)){
+      tmp.model = lm(value ~ nCells, data = df.lm[((df.lm$Method==method) & (df.lm$variable==variable) & (df.lm$nGroups==nGroups)), ])
+      tmp.res = summary(tmp.model)
+      coe = tmp.res$coefficients[2,1]
+      pval = tmp.res$coefficients[2,4]
+      df.lm2 <- rbind(df.lm2, c(coe, pval, method, variable, nGroups))
+    }
+  }
+}
+colnames(df.lm2) <- c("coef", "pval", "method", "variable","nGroups")
+df.lm2$coef <- as.numeric(df.lm2$coef)
+df.lm2$pval <- as.numeric(df.lm2$pval)
+df.lm2$sig <- ifelse(df.lm2$pval<0.05, 1, 0)
+df.lm2$method <- factor(df.lm2$method, levels = c(nn_methods, trad_methods))
+p1 = ggplot(aes(x=method, y=coef, fill=as.factor(sig)), data = df.lm2[df.lm2$variable %in% c("F1"),]) + geom_bar(stat="identity") + facet_grid(nGroups~.) + coord_flip() + scale_fill_manual(values=c("grey", "red")) +theme_classic()+theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+p1
+ggsave(p1, width = 4, height = 4, filename = glue("../../Figures/TS_Setting2/Classification/{classification_method}_lineplot_coef_top{topN}.pdf"))
+```
+
+#### summary bar plot, Sensitivity and Specificity
+```{r}
+df.mean <- aggregate(value ~ Method + nCells +nGroups + variable, data=df.final.2.melt, FUN = mean)
+df.sd <- aggregate(value ~ Method + nCells +nGroups + variable, data=df.final.2.melt, FUN = sd)
+df.bar <- cbind(df.mean, df.sd$value)
+colnames(df.bar) <- c("method","nGroups", "nCells","variable","mean","sd")
+
+p1 = ggplot(aes(x=method, y=mean,fill=variable),data = df.bar[df.bar$variable %in% c("Sensitivity", "Specificity"),]) + geom_bar(position=position_dodge(),stat="identity") + geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.2,position=position_dodge(.9)) + facet_grid(nCells~nGroups) +  coord_cartesian(ylim = c(0.4, 1)) +theme_light() +theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+
+ggsave(p1, height = 5, width = 9, filename = glue("../../Figures/TS_Setting2/Classification/{classification_method}_Setting2_barplot_top{topN}_sen_spe.pdf"))
+
+p1
+```
+

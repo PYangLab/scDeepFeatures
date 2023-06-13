@@ -1,0 +1,116 @@
+---
+title: "Setting1 marker expression"
+author: "Hao Huang"
+date: "01/11/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load
+```{r}
+suppressPackageStartupMessages({
+  library(SingleCellExperiment)
+  library(Seurat)
+
+  library(tidyverse)
+  library(dplyr)
+  
+  library(glue)
+  library(stringr)
+  
+  source("../../Utils/utils.R")
+})
+```
+
+# Expression profile - astrocyte
+```{r,fig.height=20, fig.width=10}
+p_trad <- list()
+n=1 # seed number 1
+j=1 # repeat times
+nGroups=5
+sce = readRDS(glue("../../Data/Simulation/Tabula_muris/Setting1/Simulation_setting1_nCells_200_nGroups_{nGroups}__iteration{j}_seeds{n}.rds"))
+rownames(sce) = str_replace_all(rownames(sce), "_", "-")
+res.split = train_test_split(rna = sce, cty = sce$cellTypes, seedInput = 1234)
+train.rna = res.split$train.rna
+train.cty = res.split$train.cty
+test.rna = res.split$test.rna
+test.cty = res.split$test.cty
+test.seu = as.Seurat(test.rna)
+test.seu$cellTypes2 <- test.seu$cellTypes
+test.seu$cellTypes2[test.seu$cellTypes2 == 'astrocyte'] <- 'CT1'
+test.seu$cellTypes2[test.seu$cellTypes2 == 'basal cell of epidermis'] <- 'CT2'
+test.seu$cellTypes2[test.seu$cellTypes2 == 'immature T cell'] <- 'CT3'
+test.seu$cellTypes2[test.seu$cellTypes2 == 'mesenchymal cell'] <- 'CT4'
+test.seu$cellTypes2[test.seu$cellTypes2 == 'skeletal muscle satellite stem cell'] <- 'CT5'
+test.seu@active.ident = as.factor(test.seu$cellTypes2)
+
+
+
+cellTypes = levels(as.factor(train.rna$cellTypes))
+trad_methods = c("runDESeq2", "runLimmavoom", "runScDD")
+for (method in trad_methods){
+      res_fs = readRDS(glue("../../Result/Fs_marker/Traditional/Setting1/{method}/Res_{method}_Simulation_setting1_nCells_200_nGroups_{nGroups}__iteration{j}_seeds{n}.rds"))
+      anchor_celltype_num = 0
+      anchor_celltype = cellTypes[anchor_celltype_num+1]
+      tmp_res_fs = res_fs$result[[anchor_celltype_num+1]]
+      rownames(tmp_res_fs) = str_replace_all(rownames(tmp_res_fs), "_","-") # covert this, to make seurat and non-seruat methods compatiable
+      a = rownames(tmp_res_fs)[1:10]
+      p_trad <- append(p_trad, list(RidgePlot(object = test.seu, ncol=5, features = a)))
+      }
+```
+
+```{r, fig.width=20}
+p_trad[[1]]
+#ggsave(p_trad[[1]], height=6, width=20,filename = "../../Figures/Setting1/runDESeq2_markers_v2.pdf")
+
+#ggsave(p_trad[[2]], height=6, width=20,filename = "../../Figures/Setting1/runLimmavoom_markers_v2.pdf")
+```
+
+
+```{r}
+p_nn <- list()
+n=1 # seed number 1
+j=1 # repeat times
+nGroups=5
+sce = readRDS(glue("../../Data/Simulation/Tabula_muris/Setting1/Simulation_setting1_nCells_200_nGroups_{nGroups}__iteration{j}_seeds{n}.rds"))
+rownames(sce) = str_replace_all(rownames(sce), "_", "-")
+res.split = train_test_split(rna = sce, cty = sce$cellTypes, seedInput = 1234)
+train.rna = res.split$train.rna
+train.cty = res.split$train.cty
+test.rna = res.split$test.rna
+test.cty = res.split$test.cty
+test.seu = as.Seurat(test.rna)
+test.seu$cellTypes2 <- test.seu$cellTypes
+test.seu$cellTypes2[test.seu$cellTypes2 == 'astrocyte'] <- 'CT1'
+test.seu$cellTypes2[test.seu$cellTypes2 == 'basal cell of epidermis'] <- 'CT2'
+test.seu$cellTypes2[test.seu$cellTypes2 == 'immature T cell'] <- 'CT3'
+test.seu$cellTypes2[test.seu$cellTypes2 == 'mesenchymal cell'] <- 'CT4'
+test.seu$cellTypes2[test.seu$cellTypes2 == 'skeletal muscle satellite stem cell'] <- 'CT5'
+test.seu@active.ident = as.factor(test.seu$cellTypes2)
+
+
+cellTypes = levels(as.factor(train.rna$cellTypes))
+nn_methods = c("DeepLift", "GradientShap", "LRP","FeatureAblation", "Occlusion","Lime")
+for (method in nn_methods){
+      file_list = list.files(glue("../../Result/Fs_marker/Nn/Setting1/{method}/dataset_seeds_{n}/"))
+      anchor_celltype_num = 0
+      anchor_celltype = cellTypes[anchor_celltype_num+1]
+            
+      file = file_list[grep(anchor_celltype, file_list)]
+      res_fs = read_csv(glue("../../Result/Fs_marker/Nn/Setting1/{method}/dataset_seeds_{n}/{file}"), show_col_types = FALSE)
+      gene_names = c(res_fs[,1])[[1]]
+        gene_names = str_replace_all(gene_names, "_","-")
+        a = gene_names[1:10]
+      
+      p_nn <- append(p_nn, list(RidgePlot(object = test.seu, ncol=5, features = a)))
+      }
+```
+
+```{r, fig.width=20}
+#ggsave(p_nn[[1]], height=6, width=20,filename = "../../Figures/Setting1/DeepLift_markers_v2.pdf")
+
+#ggsave(p_nn[[5]], height=6, width=20,filename = "../../Figures/Setting1/Occlusion_markers_v2.pdf")
+```

@@ -1,0 +1,166 @@
+---
+title: "Figure 2 barplot"
+author: "Hao Huang"
+date: '2022-09-08'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load 
+## load packages
+```{r}
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(glue)
+  library(reshape2)
+  library(ggpubr)
+  
+  library(scater)
+  library(tidyverse)
+  library(dplyr)
+  library(reshape2)
+  
+  library(glue)
+  library(stringr)
+})
+```
+
+useful function
+```{r}
+source("../../Utils/utils.R")
+source("../../Utils/Classification_methods/doEval.R")
+```
+
+# Setting 1
+## Classification
+```{r}
+classification_method = "KKnn"
+```
+
+```{r}
+sce = readRDS("../../Data/Processed/Tabula_muris/FS/sce_TM_FAC_processed_HH_no_logcount.rds")
+sce$celltype = sce$cell_ontology_class
+
+nCellsinEachGroup=data.frame(table(sce$celltype))
+groups=nCellsinEachGroup[nCellsinEachGroup$Freq>=300,]
+celltype=sce$celltype # cell type vector
+names(celltype)=colnames(sce) # cell id vector
+```
+
+
+```{r, fig.width=10, fig.height=5}
+for (topN in c(10)){
+  
+  
+  
+  ########### 
+  # traditional methods
+  trad_methods = c("runDESeq2", "runLimmavoom", "runScDD")
+df <- data.frame()
+  for (method in trad_methods){
+    n=1
+    j=1 # repeat times
+    while(j<=10){
+      selectedGroup_major <- c()
+      selectedGroup_minor <- c()
+      to_select = droplevels(groups$Var1)
+      for(nGroups in c(10,20)){#seq(5,20,5)
+        set.seed(n)
+        selectedGroup_major = c(selectedGroup_major, as.character(sample(to_select, 5)))
+        to_select = to_select[! to_select %in% selectedGroup_major]
+        selectedGroup_minor = c(selectedGroup_minor, as.character(sample(to_select, 5)))
+        to_select = to_select[! to_select %in% selectedGroup_minor]
+        for (imbratio in c(1/2,1/4,1/10)){#1/2, 1/4, 1/10
+          tmp = readRDS(glue("../../Result/Classification/{classification_method}/Setting3/top{topN}/{method}/{classification_method}_top{topN}_result_nGroups_{nGroups}_imb_{imbratio}_iteration{j}.rds"))
+          tmp_mean  = rowMeans(tmp[[2]][,colnames(tmp[[2]]) %in%  selectedGroup_minor] )
+          tmp_res <- c(tmp_mean[[1]], tmp_mean[[2]], tmp_mean[[7]], nGroups, imbratio, j, method, "traditional")
+          df <- rbind(df, tmp_res)
+        }
+        n=n+1
+      }
+      j=j+1
+    }
+  cat(glue("finished {method}  \n"))
+  }
+  df <- as.data.frame(df)
+  colnames(df) <- c("Sensitivity", "Specificity", "F1", "nGroups", "imbratio", "Iteration", "Method", "Category")
+  df$Sensitivity <- as.numeric(df$Sensitivity)
+  df$Specificity <- as.numeric(df$Specificity)
+  df$F1 <- as.numeric(df$F1)
+  
+  df.trad <- df
+
+  ##########
+  # deep learning methods
+  nn_methods = c( "DeepLift",  "GradientShap",  "LRP" , "FeatureAblation", "Occlusion", "Lime")
+  dl_cat <- c(rep("Deep learning - gradient based", 3), rep("Deep learning - perturbation", 3))
+  dl_cat_num = 1
+  df <- data.frame()
+  for (method in nn_methods){
+  n=1
+    j=1 # repeat times
+    while(j<=10){
+      selectedGroup_major <- c()
+      selectedGroup_minor <- c()
+      to_select = droplevels(groups$Var1)
+      for(nGroups in c(10,20)){#seq(5,20,5)
+        set.seed(n)
+        
+        selectedGroup_major = c(selectedGroup_major, as.character(sample(to_select, 5)))
+        to_select = to_select[! to_select %in% selectedGroup_major]
+        selectedGroup_minor = c(selectedGroup_minor, as.character(sample(to_select, 5)))
+        to_select = to_select[! to_select %in% selectedGroup_minor]
+        for (imbratio in c(1/2,1/4,1/10)){#1/2, 1/4, 1/10
+          tmp = readRDS(glue("../../Result/Classification/{classification_method}/Setting3/top{topN}/{method}/{classification_method}_top{topN}_result_nGroups_{nGroups}_imb_{imbratio}_iteration{j}.rds"))
+          tmp_mean  = rowMeans(tmp[[2]][,colnames(tmp[[2]]) %in%  selectedGroup_minor] )
+          tmp_res <- c(tmp_mean[[1]], tmp_mean[[2]], tmp_mean[[7]],  nGroups, imbratio, j, method, dl_cat[dl_cat_num])
+          df <- rbind(df, tmp_res)
+        }
+        
+        
+        n=n+1
+      }
+      j=j+1
+    }
+    dl_cat_num = dl_cat_num+1
+    cat(glue("finished {method}  \n"))
+  }
+  df <- as.data.frame(df)
+  colnames(df) <- c("Sensitivity", "Specificity", "F1", "nGroups", "imbratio", "Iteration", "Method", "Category")
+  df$Sensitivity <- as.numeric(df$Sensitivity)
+  df$Specificity <- as.numeric(df$Specificity)
+  df$F1 <- as.numeric(df$F1)
+  df.nn <- df
+  
+  
+  
+  # combine 
+  df.combine = rbind(df.nn, df.trad)
+  df.combine$Category = factor(df.combine$Category)
+  df.combine$Method = factor(df.combine$Method, levels = c(nn_methods, trad_methods))
+  df.combine$nGroups = factor(df.combine$nGroups)
+  df.combine$imbratio = factor(df.combine$imbratio, levels = c(1/2, 1/4, 1/10))
+  df.combine <- melt(df.combine)
+  
+  # plot
+  p1 = ggplot(aes(x=Method, y = value, fill = variable), data = df.combine) + stat_boxplot(geom = "errorbar",
+               width = 0.3) +geom_boxplot(alpha=1)+ facet_wrap(imbratio ~.) + geom_hline(yintercept=.7,color = "red", size=0.5) + theme_light()# +limy(0.75,1)
+  p1
+  #ggsave(p1, width = 28, height = 8, filename = glue("../../Figures/Setting3/Classification/{classification_method}_boxplot_topN_{topN}_minor.pdf"))
+}
+
+```
+
+
+```{r, fig.height=3, fig.width=6}
+df.combine.bar = aggregate(value ~  imbratio + Method + variable, data=df.combine, FUN=mean)
+df.combine.bar$sd <- aggregate(value ~  imbratio + Method + variable, data=df.combine, FUN=sd)$value
+
+df.combine.bar$variable = factor(df.combine.bar$variable, levels = c("F1", "Sensitivity", "Specificity"))
+p2 = ggplot(aes(x=Method, y=value,fill=variable),data = df.combine.bar) + geom_bar(position=position_dodge(),stat="identity") + geom_errorbar(aes(ymin=value-sd, ymax=value+sd), width=.2,position=position_dodge(.9)) + facet_wrap(imbratio ~.) +  coord_cartesian(ylim = c(0.5, 1)) +theme_light() +theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+ggsave(p2, width = 10, height = 3, filename = glue("../../Figures/Setting3/Classification/{classification_method}_boxplot_topN_{topN}_minor_summaryplot.pdf"))
+```
+

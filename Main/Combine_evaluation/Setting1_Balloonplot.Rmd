@@ -1,0 +1,220 @@
+---
+title: "balloon plot combined datasets"
+author: "Hao Huang"
+date: "25/10/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+---
+title: "Figure 2 barplot"
+author: "Hao Huang"
+date: '2022-09-08'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Load 
+## load packages
+```{r}
+suppressPackageStartupMessages({
+  library(SingleCellExperiment)
+  library(Seurat)
+  library(caret)
+  library(kknn)
+  
+  library(scater)
+  library(tidyverse)
+  library(dplyr)
+  
+  library(glue)
+  library(stringr)
+  library(ggplot2)
+  library(ggpubr)
+  library(ggridges)
+})
+```
+
+useful function
+```{r}
+source("../../Utils/utils.R")
+source("../../Utils/Classification_methods/doEval.R")
+```
+
+```{r}
+topN = 20
+```
+
+# Classification
+```{r}
+classification_method = "SVM" # KKnn"SVM"
+```
+
+# Tabula muris
+```{r}
+# traditional
+df = data.frame()
+trad_methods = c("runDESeq2", "runLimmavoom", "runScDD")
+for (method in trad_methods){
+for (seeds in c(1:40)){
+  res.trad.files = list.files(glue("../../Result/Classification/{classification_method}/Setting1/top{topN}/{method}/dataset_seeds_{seeds}"))
+  tmp = readRDS(glue("../../Result/Classification/{classification_method}/Setting1/top{topN}/{method}/dataset_seeds_{seeds}/{res.trad.files}"))
+  tmp[[2]][is.na(tmp[[2]])]=0
+  tmp_mean  = rowMeans(tmp[[2]])
+  res.trad.sen = tmp_mean[[1]]
+  res.trad.spe = tmp_mean[[2]]
+  res.trad.pre = tmp_mean[[5]]
+  res.trad.F1 = tmp_mean[[7]]
+  tmp_res <- c(res.trad.sen, res.trad.spe, res.trad.pre, res.trad.F1, method, "Traditional")
+  df <- rbind(df, tmp_res)
+}
+cat(glue("finished {method}  \n"))
+}
+colnames(df) <- c("Senstivity", "Specificity", "Precision", "F1", "Method", "Category")
+df$nGroups <- rep(c(5,10,15,20), 10)
+df.trad <- df
+```
+
+
+```{r}
+# deep learning
+df = data.frame()
+nn_methods = c("DeepLift", "GradientShap", "LRP","FeatureAblation", "Occlusion","Lime")
+dl_cat <- c(rep("Deep learning - gradient based", 3), rep("Deep learning - perturbation", 3))
+dl_cat_num = 1
+for (method in nn_methods){
+for (seeds in c(1:40)){
+  res.trad.files = list.files(glue("../../Result/Classification/{classification_method}/Setting1/top{topN}/{method}/dataset_seeds_{seeds}"))
+  tmp = readRDS(glue("../../Result/Classification/{classification_method}/Setting1/top{topN}/{method}/dataset_seeds_{seeds}/{res.trad.files}"))
+  tmp[[2]][is.na(tmp[[2]])]=0
+  tmp_mean  = rowMeans(tmp[[2]])
+  res.trad.sen = tmp_mean[[1]]
+  res.trad.spe = tmp_mean[[2]]
+  res.trad.pre = tmp_mean[[5]]
+  res.trad.F1 = tmp_mean[[7]]
+  tmp_res <- c(res.trad.sen, res.trad.spe, res.trad.pre, res.trad.F1, method, dl_cat[dl_cat_num])
+  df <- rbind(df, tmp_res)
+}
+  dl_cat_num = dl_cat_num + 1
+cat(glue("finished {method}  \n"))
+}
+colnames(df) <- c("Senstivity", "Specificity", "Precision", "F1", "Method", "Category")
+df$nGroups <- rep(c(5,10,15,20), 10)
+df.nn <- df
+```
+
+
+```{r}
+df = rbind(df.nn, df.trad)
+df$Senstivity = as.numeric(df$Senstivity)
+df$Specificity = as.numeric(df$Specificity)
+df$Precision = as.numeric(df$Precision)
+df$F1 = as.numeric(df$F1)
+df$Category = factor(df$Category,levels = c("Deep learning - gradient based", "Deep learning - perturbation","Traditional"))
+df$Method = factor(df$Method, levels = c(nn_methods, trad_methods))
+df$nGroups = factor(df$nGroups)
+df$data = "Tabula Muris"
+df.tm = df
+```
+
+
+# Tabula sapiens
+```{r}
+# traditional
+df = data.frame()
+trad_methods = c("runDESeq2", "runLimmavoom", "runScDD")
+for (method in trad_methods){
+for (seeds in c(1:40)){
+  res.trad.files = list.files(glue("../../Result/TS_Classification/{classification_method}/Setting1/top{topN}/{method}/dataset_seeds_{seeds}"))
+  tmp = readRDS(glue("../../Result/TS_Classification/{classification_method}/Setting1/top{topN}/{method}/dataset_seeds_{seeds}/{res.trad.files}"))
+  tmp[[2]][is.na(tmp[[2]])]=0
+  tmp_mean  = rowMeans(tmp[[2]])
+  res.trad.sen = tmp_mean[[1]]
+  res.trad.spe = tmp_mean[[2]]
+  res.trad.pre = tmp_mean[[5]]
+  res.trad.F1 = tmp_mean[[7]]
+  tmp_res <- c(res.trad.sen, res.trad.spe, res.trad.pre, res.trad.F1, method, "Traditional")
+  df <- rbind(df, tmp_res)
+}
+cat(glue("finished {method}  \n"))
+}
+colnames(df) <- c("Senstivity", "Specificity", "Precision", "F1", "Method", "Category")
+df$nGroups <- rep(c(5,10,15,20), 10)
+df.trad <- df
+```
+
+
+```{r}
+# traditional
+df = data.frame()
+nn_methods = c("DeepLift", "GradientShap", "LRP","FeatureAblation", "Occlusion","Lime")
+dl_cat <- c(rep("Deep learning - gradient based", 2), rep("Deep learning - perturbation", 4))
+dl_cat_num = 1
+for (method in nn_methods){
+for (seeds in c(1:40)){
+  res.trad.files = list.files(glue("../../Result/TS_Classification/{classification_method}/Setting1/top{topN}/{method}/dataset_seeds_{seeds}"))
+  tmp = readRDS(glue("../../Result/TS_Classification/{classification_method}/Setting1/top{topN}/{method}/dataset_seeds_{seeds}/{res.trad.files}"))
+  tmp[[2]][is.na(tmp[[2]])]=0
+  tmp_mean  = rowMeans(tmp[[2]])
+  res.trad.sen = tmp_mean[[1]]
+  res.trad.spe = tmp_mean[[2]]
+  res.trad.pre = tmp_mean[[5]]
+  res.trad.F1 = tmp_mean[[7]]
+  tmp_res <- c(res.trad.sen, res.trad.spe, res.trad.pre, res.trad.F1, method, dl_cat[dl_cat_num])
+  df <- rbind(df, tmp_res)
+}
+  dl_cat_num = dl_cat_num + 1
+cat(glue("finished {method}  \n"))
+}
+colnames(df) <- c("Senstivity", "Specificity", "Precision", "F1", "Method", "Category")
+df$nGroups <- rep(c(5,10,15,20), 10)
+df.nn <- df
+```
+
+```{r}
+df = rbind(df.nn, df.trad)
+df$Senstivity = as.numeric(df$Senstivity)
+df$Specificity = as.numeric(df$Specificity)
+df$Precision = as.numeric(df$Precision)
+df$F1 = as.numeric(df$F1)
+df$Category = factor(df$Category,levels = c("Deep learning - gradient based", "Deep learning - perturbation",  "Traditional"))
+df$Method = factor(df$Method, levels = c(nn_methods, trad_methods))
+df$nGroups = factor(df$nGroups)
+df$data = "Tabula Sapiencs"
+df.ts = df
+```
+
+#### individual metric ballon plot
+F1
+```{r, fig.width=3}
+df.ballon.tm <- aggregate(F1 ~ Method + nGroups + data, data=df.tm, FUN=median)
+df.ballon.2.tm <- data.frame()
+for (i in c(5,10,15,20)) {
+  df.tmp <- df.ballon.tm[df.ballon.tm$nGroups ==i,]
+  df.tmp$Rank <- rank(df.tmp$F1)
+  df.ballon.2.tm <- rbind(df.ballon.2.tm, df.tmp)
+}
+
+df.ballon.ts <- aggregate(F1 ~ Method + nGroups + data, data=df.ts, FUN=median)
+df.ballon.2.ts <- data.frame()
+for (i in c(5,10,15,20)) {
+  df.tmp <- df.ballon.ts[df.ballon.ts$nGroups ==i,]
+  df.tmp$Rank <- rank(df.tmp$F1)
+  df.ballon.2.ts <- rbind(df.ballon.2.ts, df.tmp)
+}
+
+
+df.ballon.2 <- rbind(df.ballon.2.tm, df.ballon.2.ts)
+df.ballon.2$nGroups <- factor(df.ballon.2$nGroups, levels = c(5,10,15,20))
+df.ballon.2$Method <- factor(df.ballon.2$Method, levels = c(nn_methods,trad_methods))
+#ggballoonplot(data=df.ballon.2, x="Method", y="nGroups", size="Rank", color="data", fill = "NA")
+p1 = ggballoonplot(data=df.ballon.2, x="Method", y="nGroups", size="Rank", color="data", fill = "NA")+theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+p1
+ggsave(p1, width=5, height = 4, filename = glue("../../Figures/Combined_Setting1/Classification/{classification_method}_Setting1_balloonplot_top{topN}_F1.pdf"))
+```
+
