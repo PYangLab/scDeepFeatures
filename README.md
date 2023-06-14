@@ -18,7 +18,7 @@ conda activate DL_feature_selection
 Step 2:
 Obtain DL_feature_selection by clonning the github repository:
 ```
-git clone https://github.com/HaoHuang-USYD/DL_feature_selection.git
+git clone https://github.com/PYangLab/scDeepFeatures.git
 ```
 
 ## Preparing intput
