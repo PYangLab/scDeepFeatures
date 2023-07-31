@@ -173,7 +173,7 @@ for i in range(rna_num_celltype):
     else:
         for j in tqdm(range(rna_train_data_each_celltype_fs.size(0)-1)):
             if args.method == "GradientShap":
-                baselines = torch.randn(1, rna_train_data_each_celltype_fs.size(1)).to(device)
+                baselines = torch.zeros(1, rna_train_data_each_celltype_fs.size(1)).to(device)
                 attribution = attribution + deconv.attribute(rna_train_data_each_celltype_fs[j:j+1,:], baselines, target=i)
             elif args.method == "Lime":
                 tmp_attr = deconv.attribute(rna_train_data_each_celltype_fs[j:j+1,:], target=i, n_samples=500)
