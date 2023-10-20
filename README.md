@@ -78,3 +78,9 @@ Scripts for feature selection have been deposited in `Main/TM_RunFeatureSelectio
 ## Scripts for analysing feature selection results
 Scripts for analysing the feature selection results have been deposited in `Main/TM_RunEvaluation`, `Main/TS_RunEvaluation` and `Main/Combine_Evaluation`.
 
+## Citation
+If you use this content, please cite:
+```
+Hao Huang; Chunlei Liu; Manoj M Wagle; Pengyi Yang, Evaluation of deep learning-based feature selection for single-cell RNA sequencing data analysis. October 2023.
+```
+View our publication here: 
