@@ -11,7 +11,7 @@ DL feature selection for scRNA-seq is developed using PyTorch 1.11.0 and Captum 
 ### Installation using provided environment
 Step 1: Create and activate the conda environment for matilda using our provided file
 ```
-conda env create -f environment_DL_feature_selection.yaml
+conda env create -f environment_DL_feature_selection.yml
 conda activate fsdl
 ```
 
