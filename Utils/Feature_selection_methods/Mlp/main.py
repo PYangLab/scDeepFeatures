@@ -38,7 +38,7 @@ setup_seed(1234)
 cuda = True if torch.cuda.is_available() else False
 device = torch.device("cuda:0") if cuda == True else torch.device("cpu") 
 print("cuda is: " + str(cuda) + "\n" +
-      "current device is: " + str(torch.cuda.get_device_name(0)))
+      "current device is: " + str(torch.cuda.get_device_name(0))) if cuda == True else print("current devicce is cpu")
 FloatTensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
 LongTensor = torch.cuda.LongTensor if cuda else torch.LongTensor
 
