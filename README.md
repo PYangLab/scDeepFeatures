@@ -6,7 +6,7 @@ In this work, we explore the utility of various deep learning-based feature sele
 <img width=100% src="https://github.com/HaoHuang-USYD/DL_feature_selection/blob/main/img/main.png"/>
 
 ## Installation:
-DL feature selection for scRNA-seq is developed using PyTorch 1.11.0 and Captum 0.5.0 and requires >=1 GPU to run. We recommend using conda enviroment to install and run the framework. We assume conda is installed. You can use the provided environment or install the environment by yourself accoring to your hardware settings. Note the following installation code snippets were tested on a Windows system (Win10 professional) with a NVIDIA GeForce RTX 3090 GPU. The installation process needs about 15 minutes.
+DL feature selection for scRNA-seq is developed using PyTorch 1.11.0 and Captum 0.5.0 and requires >=1 GPU to run (The framework is adaptable to sever without GPU, but without extensive test). We recommend using conda enviroment to install and run the framework. We assume conda is installed. You can use the provided environment or install the environment by yourself accoring to your hardware settings. Note the following installation code snippets were tested on a Windows system (Win10 professional) with a NVIDIA GeForce RTX 3090 GPU. The installation process needs about 15 minutes.
  
 ### Installation using provided environment
 Step 1: Create and activate the conda environment for matilda using our provided file
